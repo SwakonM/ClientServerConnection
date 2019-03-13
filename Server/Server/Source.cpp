@@ -1,3 +1,4 @@
+#define _WINSOCK_DEPRECATED_NO_WARNINGS
 #pragma comment(lib,"ws_32.lib")
 
 #include <WinSock2.h>
@@ -5,27 +6,58 @@
 
 
 SOCKET Connections[100];
-int ConnectionCounter = 0;
+int TotalConnections = 0;
+enum Packet //Typ wiadomosci
+{
+	P_ChatMessage,
+	P_Test
 
-void ClientHandlerThread(int index)
+};
+bool ProcessPacket(int ID, Packet packettype)
+{
+	switch (packettype)
+	{
+		case P_ChatMessage:
+		{
+			int bufferlength;
+			int result = recv(Connections[ID], (char*)&bufferlength, sizeof(int), NULL); // pobiera dlugosc buffora
+			if (result > 0)
+			{
+				char * buffer = new char[bufferlength]; //rozdziela pameic
+				recv(Connections[ID], buffer, bufferlength, NULL); //odbiera wiadmosci od klienta
+				for (int i = 0; i < TotalConnections; i++) // dla kazdego klienta
+				{
+					if (i == ID)
+					continue; // pomija uzytkowniak
+					Packet chatmessagepacket = P_ChatMessage;
+					send(Connections[i], (char *)&chatmessagepacket, sizeof(Packet), NULL);
+					send(Connections[i], (char *)&bufferlength, sizeof(int), NULL); //wysyla dlugosc buffera do clienta
+					send(Connections[i], buffer, bufferlength, NULL); // przesyla wiadomosc
+				}
+				delete[] buffer;
+			}
+		
+		}
+		break;
+	default:
+		std::cout << "Unrecognized packet: " << packettype << std::endl;
+		break;
+	}
+	return true;
+}
+
+void ClientHandlerThread(int ID)
 {
 	
-	int bufferlength; //przetrzymuje dlugosc bufora
+	Packet packettype;
 	while (true)
 	{
-		recv(Connections[index], (char*)&bufferlength, sizeof(int), NULL); // pobiera dlugosc buffora
-		char * buffer = new char[bufferlength]; //rozdziela pameic
-		recv(Connections[index], buffer, bufferlength, NULL); //odbiera wiadmosci od klienta
-	
-		for (int i = 0; i < ConnectionCounter; i++) // dla kazdego klienta
-		{
-			if (i == index)
-				continue; // pomija uzytkowniak
-			send(Connections[i], (char *)&bufferlength, sizeof(int), NULL); //wysyla dlugosc buffera do clienta
-			send(Connections[i], buffer, bufferlength, NULL); // przesyla wiadomosc
-		}
-		delete[] buffer;
+		recv(Connections[ID], (char*)&packettype, sizeof(Packet), NULL);
+		
+		if (!ProcessPacket(ID, packettype))
+			break;
 	}
+	closesocket(Connections[ID]);
 }
 
 int main()
@@ -59,13 +91,20 @@ int main()
 		else // poprawne polaczenie
 		{
 			std::cout << "Client Connected" << std::endl;
-			std::string MOTD = "Witamy ! Have a nice day";
-			int MOTDLenght = MOTD.size();// dlugosc wiadomosc Witamy
-			send(newConnection, (char*)& MOTDLenght, sizeof(int), NULL);
-			send(newConnection, MOTD.c_str(), MOTDLenght, NULL);
 			Connections[i] = newConnection;
-			ConnectionCounter = + 1; //Inkrementuje wszystki liczbe polaczonych klientow
-			CreateThread(NULL, NULL, (LPTHREAD_START_ROUTINE) ClientHandlerThread, (LPVOID)(i), NULL, NULL);
+			CreateThread(NULL, NULL, (LPTHREAD_START_ROUTINE)ClientHandlerThread, (LPVOID)(i), NULL, NULL);
+			TotalConnections = +1; //Inkrementuje wszystki liczbe polaczonych klientow
+			Packet chatmessagepacket = P_ChatMessage; //tworzy typ pakirtu
+			send(Connections[i], (char*)&chatmessagepacket, sizeof(Packet), NULL);// wysyla typ pakietu
+			std::string buftest = "MOTD: Witamy ! Have a nice day";
+			int size = buftest.size();
+			send(Connections[i], (char*)&size, sizeof(int), NULL);
+			send(Connections[i], buftest.c_str(),buftest.size(), NULL);
+			
+			Packet testpacket = P_Test;
+			send(Connections[i], (char*)&testpacket, sizeof(Packet), NULL);
+			
+			
 		}
 	}
 	system("pause");

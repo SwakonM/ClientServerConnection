@@ -1,23 +1,55 @@
 //Client
+#define _WINSOCK_DEPRECATED_NO_WARNINGS
 #pragma comment(lib,"ws_32.lib")
 #include <WinSock2.h>
 #include <iostream>
 #include <string>
 
 SOCKET Connection;
+enum Packet //Typ wiadomosci
+{
+P_ChatMessage,
+P_Test
+
+};
+bool ProcessPacket(Packet packettype)
+{
+	switch (packettype)
+	{
+	case P_ChatMessage:
+	{
+		int bufferlength;
+		recv(Connection, (char*)&bufferlength, sizeof(int), NULL); // odbiera wiadomsoc o rozmairze
+		char * buffer = new char[bufferlength + 1];
+		buffer[bufferlength] = '\0';
+		recv(Connection, buffer, bufferlength, NULL);
+		std::cout << buffer << std::endl; //wypsuje buffer
+		delete[] buffer; //uwalnia buffer
+		break;
+	}
+	case P_Test:
+		std::cout << "You have recived the test packet" << std::endl;
+		break;
+	default: // nierozpoznany pakiet
+		std::cout << "Unrecognized packet: " << packettype << std::endl;
+		break;
+	}
+	return true;
+}
 
 void ClientThread()
 {
-	int bufferlenght;
+	Packet packettype;
 	while (true)
 	{
-		recv(Connection, (char*)&bufferlenght, sizeof(int), NULL);
-		char * buffer = new char[bufferlenght +1];
-		buffer[bufferlenght] = '\0';
-		recv(Connection, buffer, bufferlenght, NULL);
-		std::cout << buffer << std::endl; //wypsuje 
-		delete[] buffer;
+		int result = recv(Connection, (char*)&packettype, sizeof(Packet), NULL); // odbiera typ packietu
+		if (result > 0) 
+		{
+			if (!ProcessPacket(packettype))//jesli  pakiet nie przejdzie prawidlowo
+				break; //wyjdz z kilenta		
+		}
 	}
+	closesocket(Connection);
 }
 
 int main() 
@@ -36,7 +68,7 @@ int main()
 	addr.sin_port = htons(1111); //Port
 	addr.sin_family = AF_INET; //IPv4 gniazdo
 
-	SOCKET Connection = socket(AF_INET, SOCK_STREAM, NULL); //ustawienie polaczenia
+	 Connection = socket(AF_INET, SOCK_STREAM, NULL); //ustawienie polaczenia
 	if (connect(Connection, (SOCKADDR*)&addr, sizeofaddr) != 0) //jesli nie mozemy sie polaczyc
 	{
 		MessageBoxA(NULL, "Failed to Connect", "Error", MB_OK | MB_ICONERROR);
@@ -46,13 +78,15 @@ int main()
 	CreateThread(NULL, NULL, (LPTHREAD_START_ROUTINE)ClientThread, NULL, NULL, NULL);
 
 
-	std::string buffer;
+	std::string userinput;
 	while (true)
 	{
-		std::getline(std::cin, buffer); // pobiera linie jesli uzytkownik nacisnal enter
-		int bufferlenght = buffer.size();
+		std::getline(std::cin, userinput); // pobiera linie jesli uzytkownik nacisnal enter
+		int bufferlenght = userinput.size();// znajdz rozmiar buffora
+		Packet packettype = P_ChatMessage; //tworzy typ pakirtu
+		send(Connection, (char*)&packettype, sizeof(Packet), NULL);// wysyla typ pakietu
 		send(Connection, (char*)&bufferlenght, sizeof(int), NULL); //wysyla wielkosc buffera
-		send(Connection, buffer.c_str(), bufferlenght, NULL);  //wysyla wiadomosc
+		send(Connection, userinput.c_str(), bufferlenght, NULL);  //wysyla wiadomosc
 		Sleep(10);
 	}
 	system("pause");
