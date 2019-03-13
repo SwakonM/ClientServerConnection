@@ -2,6 +2,7 @@
 #pragma comment(lib,"ws_32.lib")
 #include <WinSock2.h>
 #include <iostream>
+#include <string>
 
 SOCKET Connection;
 
@@ -40,11 +41,13 @@ int main()
 	CreateThread(NULL, NULL, (LPTHREAD_START_ROUTINE)ClientThread, NULL, NULL, NULL);
 
 
-	char buffer[256];
+	std::string buffer;
 	while (true)
 	{
-		std::cin.getline(buffer, sizeof(buffer));
-		send(Connection, buffer, sizeof(buffer), NULL);
+		std::getline(std::cin, buffer); // pobiera linie jesli uzytkownik nacisnal enter
+		int bufferlenght = buffer.size();
+		send(Connection, (char*)&bufferlenght, sizeof(int), NULL); //wysyla wielkosc buffera
+		send(Connection, buffer.c_str(), bufferlenght, NULL);  //wysyla wiadomsoc
 		Sleep(10);
 	}
 	system("pause");
