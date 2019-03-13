@@ -8,12 +8,17 @@ SOCKET Connection;
 
 void ClientThread()
 {
-	char buffer[256];
+	int bufferlenght;
 	while (true)
-		recv(Connection, buffer, sizeof(buffer), NULL);
-	std::cout << buffer << std::endl;
+	{
+		recv(Connection, (char*)&bufferlenght, sizeof(int), NULL);
+		char * buffer = new char[bufferlenght +1];
+		buffer[bufferlenght] = '\0';
+		recv(Connection, buffer, bufferlenght, NULL);
+		std::cout << buffer << std::endl; //wypsuje 
+		delete[] buffer;
+	}
 }
-
 
 int main() 
 {
@@ -34,7 +39,7 @@ int main()
 	SOCKET Connection = socket(AF_INET, SOCK_STREAM, NULL); //ustawienie polaczenia
 	if (connect(Connection, (SOCKADDR*)&addr, sizeofaddr) != 0) //jesli nie mozemy sie polaczyc
 	{
-		MessageBoxA(NULL, "Failed to Coonnect", "Error", MB_OK | MB_ICONERROR);
+		MessageBoxA(NULL, "Failed to Connect", "Error", MB_OK | MB_ICONERROR);
 		return 0; //bledne polaczenie
 	}
 	std::cout << "Connected!" << std::endl;
@@ -47,7 +52,7 @@ int main()
 		std::getline(std::cin, buffer); // pobiera linie jesli uzytkownik nacisnal enter
 		int bufferlenght = buffer.size();
 		send(Connection, (char*)&bufferlenght, sizeof(int), NULL); //wysyla wielkosc buffera
-		send(Connection, buffer.c_str(), bufferlenght, NULL);  //wysyla wiadomsoc
+		send(Connection, buffer.c_str(), bufferlenght, NULL);  //wysyla wiadomosc
 		Sleep(10);
 	}
 	system("pause");

@@ -9,17 +9,22 @@ int ConnectionCounter = 0;
 
 void ClientHandlerThread(int index)
 {
-	char buffer[256];
+	
+	int bufferlength; //przetrzymuje dlugosc bufora
 	while (true)
 	{
-		recv(Connections[index], buffer, sizeof(buffer), NULL);
-	 	std::cout << buffer << std::endl;
-		for (int i = 0; i < ConnectionCounter; i++)
+		recv(Connections[index], (char*)&bufferlength, sizeof(int), NULL); // pobiera dlugosc buffora
+		char * buffer = new char[bufferlength]; //rozdziela pameic
+		recv(Connections[index], buffer, bufferlength, NULL); //odbiera wiadmosci od klienta
+	
+		for (int i = 0; i < ConnectionCounter; i++) // dla kazdego klienta
 		{
 			if (i == index)
-				continue;
-			send(Connections[i], buffer, sizeof(buffer), NULL);
+				continue; // pomija uzytkowniak
+			send(Connections[i], (char *)&bufferlength, sizeof(int), NULL); //wysyla dlugosc buffera do clienta
+			send(Connections[i], buffer, bufferlength, NULL); // przesyla wiadomosc
 		}
+		delete[] buffer;
 	}
 }
 
@@ -54,10 +59,12 @@ int main()
 		else // poprawne polaczenie
 		{
 			std::cout << "Client Connected" << std::endl;
-			char MOTD[256] = "Welcome ! This is the Message of the Day";
-			send(newConnection, MOTD, sizeof(MOTD), NULL);
+			std::string MOTD = "Witamy ! Have a nice day";
+			int MOTDLenght = MOTD.size();// dlugosc wiadomosc Witamy
+			send(newConnection, (char*)& MOTDLenght, sizeof(int), NULL);
+			send(newConnection, MOTD.c_str(), MOTDLenght, NULL);
 			Connections[i] = newConnection;
-			ConnectionCounter = + 1;
+			ConnectionCounter = + 1; //Inkrementuje wszystki liczbe polaczonych klientow
 			CreateThread(NULL, NULL, (LPTHREAD_START_ROUTINE) ClientHandlerThread, (LPVOID)(i), NULL, NULL);
 		}
 	}
