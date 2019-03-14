@@ -1,4 +1,4 @@
-#define _WINSOCK_DEPRECATED_NO_WARNINGS
+#define _WINSOCK_DEPRECATED_NO_WARNINGS 1
 #pragma comment(lib,"ws_32.lib")
 
 #include <WinSock2.h>
@@ -13,32 +13,85 @@ enum Packet //Typ wiadomosci
 	P_Test
 
 };
+bool SendInt(int ID, int _int)
+{
+	int RetnCheck = send(Connections[ID], (char*)&_int, sizeof(int), NULL); // przesyla _int
+	if (RetnCheck == SOCKET_ERROR) // jesli zawiedziedzie int z przesylaniem poprzez problem z polaczeniem wtedy wraca : F lub T 
+		return false;
+	return true;
+}
+bool GetInt(int ID, int &_int)
+{
+	int RetnCheck = recv(Connections[ID], (char*)&_int, sizeof(int), NULL); // dostaje int
+	if (RetnCheck == SOCKET_ERROR) // problem z polaczeniem
+		return false;
+	return true;
+}
+bool SendPacketType(int ID, Packet _packettype)
+{
+	int RetnCheck = send(Connections[ID], (char*)&_packettype, sizeof(Packet), NULL); //przesyla pakiet
+	if (RetnCheck == SOCKET_ERROR) //problem z przeslaniem pakietu
+		return false;
+	return true;
+}
+bool GetPacketType(int ID, Packet & _packettype)
+{
+	int RetnCheck = recv(Connections[ID], (char*)&_packettype, sizeof(Packet), NULL); //odbiera pakiet
+	if (RetnCheck == SOCKET_ERROR) //problem z przeslaniem pakietu
+		return false;
+	return true;
+}
+bool SendString(int ID, std::string & _string)
+{
+	if (!SendPacketType(ID, P_ChatMessage))
+		return false;
+	int bufferlength = _string.size(); //znajdluje dlugosc buffera
+	if (!SendInt(ID, bufferlength))
+		return false;
+	int RetnCheck = send(Connections[ID], _string.c_str(), bufferlength, NULL);// przesyla string buffer
+	if (RetnCheck == SOCKET_ERROR)// blad w przesylaniu buffera
+		return false;
+	return true;
+}
+bool GetString(int ID, std::string &_string)
+{
+	int bufferlength;
+	if (!GetInt(ID, bufferlength))
+		return false;
+	char * buffer = new char[bufferlength + 1]; //przydziela buffer
+	buffer[bufferlength] = '\0';
+	int RetnCheck = recv(Connections[ID], buffer, bufferlength, NULL);
+	_string = buffer;
+	delete[] buffer; //zwalnia buffer
+	if (RetnCheck == SOCKET_ERROR) //problem z przeslaniem pakietu
+		return false;
+	return true;
+}
+
 bool ProcessPacket(int ID, Packet packettype)
 {
 	switch (packettype)
 	{
-		case P_ChatMessage:
+	case P_ChatMessage:
+	{
+		std::string Message;
+		if (!GetString(ID, Message))
+			return false;
+
+		for (int i = 0; i < TotalConnections; i++)
 		{
-			int bufferlength;
-			int result = recv(Connections[ID], (char*)&bufferlength, sizeof(int), NULL); // pobiera dlugosc buffora
-			if (result > 0)
+			if (i == ID)
+				continue;
+			if (!SendString(i, Message))
 			{
-				char * buffer = new char[bufferlength]; //rozdziela pameic
-				recv(Connections[ID], buffer, bufferlength, NULL); //odbiera wiadmosci od klienta
-				for (int i = 0; i < TotalConnections; i++) // dla kazdego klienta
-				{
-					if (i == ID)
-					continue; // pomija uzytkowniak
-					Packet chatmessagepacket = P_ChatMessage;
-					send(Connections[i], (char *)&chatmessagepacket, sizeof(Packet), NULL);
-					send(Connections[i], (char *)&bufferlength, sizeof(int), NULL); //wysyla dlugosc buffera do clienta
-					send(Connections[i], buffer, bufferlength, NULL); // przesyla wiadomosc
-				}
-				delete[] buffer;
+				std::cout << "Failed to send message from client ID: " << ID << " to cliend ID: " << i << std::endl;
 			}
-		
 		}
+
+		std::cout << "Proccesed chat message packet form user ID: " << ID << std::endl;
 		break;
+
+	}
 	default:
 		std::cout << "Unrecognized packet: " << packettype << std::endl;
 		break;
@@ -48,15 +101,16 @@ bool ProcessPacket(int ID, Packet packettype)
 
 void ClientHandlerThread(int ID)
 {
-	
-	Packet packettype;
+
+	Packet PacketType;
 	while (true)
 	{
-		recv(Connections[ID], (char*)&packettype, sizeof(Packet), NULL);
-		
-		if (!ProcessPacket(ID, packettype))
+		if (!GetPacketType(ID, PacketType)) //pobierz pakiet
 			break;
+		if (!ProcessPacket(ID, PacketType))//jesli  pakiet nie przejdzie prawidlowo
+			break; //wyjdz z kilenta		
 	}
+	std::cout << "Lost connection to the server." << std::endl;
 	closesocket(Connections[ID]);
 }
 
@@ -75,7 +129,7 @@ int main()
 	addr.sin_addr.s_addr = inet_addr("127.0.0.1"); //transmisja lokalna
 	addr.sin_port = htons(1111); //Port
 	addr.sin_family = AF_INET; //IPv4 gniazdo
-	
+
 	SOCKET  sListen = socket(AF_INET, SOCK_STREAM, NULL); //Stworzenie gniazda dla nowych polaczen
 	bind(sListen, (SOCKADDR*)& addr, sizeof(addr)); //wi¹¿ê adres z gniazdem
 	listen(sListen, SOMAXCONN); //nas³uchuje pochodzenia przychodz¹ce
@@ -92,19 +146,10 @@ int main()
 		{
 			std::cout << "Client Connected" << std::endl;
 			Connections[i] = newConnection;
-			CreateThread(NULL, NULL, (LPTHREAD_START_ROUTINE)ClientHandlerThread, (LPVOID)(i), NULL, NULL);
 			TotalConnections = +1; //Inkrementuje wszystki liczbe polaczonych klientow
-			Packet chatmessagepacket = P_ChatMessage; //tworzy typ pakirtu
-			send(Connections[i], (char*)&chatmessagepacket, sizeof(Packet), NULL);// wysyla typ pakietu
-			std::string buftest = "MOTD: Witamy ! Have a nice day";
-			int size = buftest.size();
-			send(Connections[i], (char*)&size, sizeof(int), NULL);
-			send(Connections[i], buftest.c_str(),buftest.size(), NULL);
-			
-			Packet testpacket = P_Test;
-			send(Connections[i], (char*)&testpacket, sizeof(Packet), NULL);
-			
-			
+			CreateThread(NULL, NULL, (LPTHREAD_START_ROUTINE)ClientHandlerThread, (LPVOID)(i), NULL, NULL);
+			std::string MOTD = "MOTD: Witamy ! It's daily message.";
+			SendString(i, MOTD);
 		}
 	}
 	system("pause");
